@@ -1,3 +1,7 @@
 (test
  (name protocol_test)
  (libraries alcotest chat))
+
+(test
+ (name server_test)
+ (libraries alcotest alcotest-lwt chat))

@@ -14,6 +14,7 @@ depends: [
   "ocaml"
   "lwt"
   "alcotest"
+  "alcotest-lwt"
   "odoc" {with-doc}
 ]
 build: [

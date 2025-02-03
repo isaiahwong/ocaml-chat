@@ -19,7 +19,7 @@
  (name chat)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml lwt alcotest)
+ (depends ocaml lwt alcotest alcotest-lwt)
  (tags
   (chat tcp)))
 
