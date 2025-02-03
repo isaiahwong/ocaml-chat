@@ -1,0 +1,3 @@
+(test
+ (name protocol_test)
+ (libraries alcotest chat))
