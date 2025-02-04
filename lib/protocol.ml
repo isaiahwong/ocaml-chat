@@ -1,31 +1,106 @@
 let ( let* ) = Result.bind
+let ( let-? ) = Lwt.bind
 
-type header = {
-  request_method : [ `START | `MESSAGE | `ACK ];
-  size : int;
-}
+module RequestMethod = struct
+  type t =
+    | START of (string * string)
+    | ACK
+    | MESSAGE of string
 
-let request_method_of_string = function
-  | "START" -> Ok `START
-  | "MESSAGE" -> Ok `MESSAGE
-  | "ACK" -> Ok `ACK
-  | _ -> Error "Invalid method"
+  let of_string str =
+    match String.split_on_char ' ' str with
+    | [ "START"; sender; receiver ] -> Ok (START (sender, receiver))
+    | [ "ACK" ] -> Ok ACK
+    | [ "MESSAGE"; receiver ] -> Ok (MESSAGE receiver)
+    | _ -> Error "Invalid request method"
 
-let header_of_string str : (header, string) result =
-  let scan str =
-    try
-      Scanf.sscanf str "%s %d" (fun request_method_str size ->
-          Ok (request_method_str, size))
-    with
-    | Scanf.Scan_failure msg -> Error ("Scan failure: " ^ msg)
-    | Failure msg -> Error ("Scan failure: " ^ msg)
-    | End_of_file -> Error "EOF"
-  in
-  let* request_method_str, size = scan str in
-  let* request_method = request_method_of_string request_method_str in
-  Ok { request_method; size }
+  let to_string = function
+    | START (sender, receiver) -> Printf.sprintf "START %s %s" sender receiver
+    | MESSAGE receiver -> Printf.sprintf "MESSAGE %s" receiver
+    | ACK -> "ACK"
 
-type message = {
-  header : header;
-  body : bytes;
-}
+  let pp fmt = function
+    | START (sender, receiver) ->
+        Format.fprintf fmt "START (%s, %s)" sender receiver
+    | MESSAGE receiver -> Format.fprintf fmt "MESSAGE (%s)" receiver
+    | ACK -> Format.fprintf fmt "ACK"
+end
+
+(** Protocol Header *)
+module Header = struct
+  type t = {
+    request_method : RequestMethod.t;
+    size : int;
+  }
+
+  let init request_method size = { request_method; size }
+
+  let of_string str : (t, string) result =
+    let scan str =
+      try
+        (* %[^\n] matches everything except new line*)
+        Scanf.sscanf str "%d %[^\n]" (fun size request_method_str ->
+            Ok (request_method_str, size))
+      with
+      | Scanf.Scan_failure msg -> Error ("Scan failure: " ^ msg)
+      | Failure msg -> Error ("Scan failure: " ^ msg)
+      | End_of_file -> Error "EOF"
+    in
+    let* request_method_str, size = scan str in
+    let* request_method = RequestMethod.of_string request_method_str in
+    Ok { request_method; size }
+
+  let to_string hdr =
+    Printf.sprintf "%d %s" hdr.size
+    @@ RequestMethod.to_string hdr.request_method
+
+  let pp fmt { request_method; size } =
+    Format.fprintf fmt "{ request_method = %a; size = %d }" RequestMethod.pp
+      request_method size
+end
+
+module Message = struct
+  type t = {
+    header : Header.t;
+    body : string;
+  }
+
+  let init header body = { header; body }
+
+  let marshal message =
+    Printf.sprintf "%s\n%s" (Header.to_string message.header) message.body
+end
+
+let read_header input =
+  let-? line_opt = Lwt_io.read_line_opt input in
+  match line_opt with
+  | None -> Lwt.return_error "Malformed headers"
+  | Some header_str -> (
+      match Header.of_string header_str with
+      | Error err -> Lwt.return_error err
+      | Ok header -> Lwt.return_ok header)
+
+let read_body ic (header : Header.t) =
+  match header.size with
+  | 0 -> Lwt.return_ok ""
+  | size -> (
+      let buffer = Bytes.create size in
+      let-? read = Lwt_io.read_into ic buffer 0 size in
+      match read with
+      | 0 -> Lwt.return_error "Malformed" (* Zero bytes*)
+      | _ -> Lwt.return_ok @@ Bytes.to_string buffer)
+
+let read ic =
+  let-? header = read_header ic in
+  match header with
+  | Error _ as err -> Lwt.return err
+  | Ok header -> (
+      let-? body = read_body ic header in
+      match body with
+      | Error _ as err -> Lwt.return err
+      | Ok body -> Lwt.return_ok @@ Message.init header body)
+
+let write (oc : Lwt_io.output_channel) body request_method =
+  let header = Header.init request_method (String.length body) in
+  let message = Message.init header body in
+  Lwt_io.write oc @@ Message.marshal message
