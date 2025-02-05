@@ -1,29 +1,25 @@
 let ( let* ) = Result.bind
 let ( let-? ) = Lwt.bind
+let empty_body = ""
 
 module RequestMethod = struct
   type t =
-    | START of (string * string)
-    | ACK
-    | MESSAGE of string
+    | ACK of int
+    | MSG of int
 
-  let of_string str =
-    match String.split_on_char ' ' str with
-    | [ "START"; sender; receiver ] -> Ok (START (sender, receiver))
-    | [ "ACK" ] -> Ok ACK
-    | [ "MESSAGE"; receiver ] -> Ok (MESSAGE receiver)
+  let of_string s =
+    match String.split_on_char ' ' s with
+    | [ "ACK"; id ] -> Ok (ACK (int_of_string id))
+    | [ "MSG"; id ] -> Ok (MSG (int_of_string id))
     | _ -> Error "Invalid request method"
 
   let to_string = function
-    | START (sender, receiver) -> Printf.sprintf "START %s %s" sender receiver
-    | MESSAGE receiver -> Printf.sprintf "MESSAGE %s" receiver
-    | ACK -> "ACK"
+    | MSG id -> Printf.sprintf "MSG %d" id
+    | ACK id -> Printf.sprintf "ACK %d" id
 
   let pp fmt = function
-    | START (sender, receiver) ->
-        Format.fprintf fmt "START (%s, %s)" sender receiver
-    | MESSAGE receiver -> Format.fprintf fmt "MESSAGE (%s)" receiver
-    | ACK -> Format.fprintf fmt "ACK"
+    | MSG id -> Format.fprintf fmt "MSG %d" id
+    | ACK id -> Format.fprintf fmt "ACK %d" id
 end
 
 (** Protocol Header *)
@@ -34,6 +30,9 @@ module Header = struct
   }
 
   let init request_method size = { request_method; size }
+
+  let init_msg_header id body =
+    { request_method = MSG id; size = String.length body }
 
   let of_string str : (t, string) result =
     let scan str =
@@ -74,7 +73,7 @@ end
 let read_header input =
   let-? line_opt = Lwt_io.read_line_opt input in
   match line_opt with
-  | None -> Lwt.return_error "Malformed headers"
+  | None -> Lwt.return_error "Connection Closed"
   | Some header_str -> (
       match Header.of_string header_str with
       | Error err -> Lwt.return_error err
@@ -93,11 +92,11 @@ let read_body ic (header : Header.t) =
 let read ic =
   let-? header = read_header ic in
   match header with
-  | Error _ as err -> Lwt.return err
+  | Error err -> Lwt.return_error err
   | Ok header -> (
       let-? body = read_body ic header in
       match body with
-      | Error _ as err -> Lwt.return err
+      | Error err -> Lwt.return_error err
       | Ok body -> Lwt.return_ok @@ Message.init header body)
 
 let write (oc : Lwt_io.output_channel) body request_method =

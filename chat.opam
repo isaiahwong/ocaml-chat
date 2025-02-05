@@ -13,6 +13,7 @@ depends: [
   "dune" {>= "3.17"}
   "ocaml"
   "lwt"
+  "mtime"
   "alcotest"
   "alcotest-lwt"
   "odoc" {with-doc}

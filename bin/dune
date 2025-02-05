@@ -1,4 +1,9 @@
 (executable
- (public_name chat)
+ (public_name server)
  (name main)
+ (libraries chat))
+
+(executable
+ (public_name client)
+ (name client)
  (libraries chat))

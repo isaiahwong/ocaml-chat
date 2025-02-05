@@ -14,7 +14,7 @@ let result_header_testable = Alcotest.(result header_testable string)
 let test_protocol_read_message _ () =
   let read () =
     let r, w = Lwt_io.pipe () in
-    let* () = Lwt_io.write w "5 MESSAGE tim\n12345" in
+    let* () = Lwt_io.write w "5 MSG 2\n12345" in
     let* () = Lwt_io.close w in
     let* result = Chat.Protocol.read r in
     match result with
@@ -27,13 +27,9 @@ let test_protocol_read_message _ () =
 
 (* Test Cases *)
 let test_parse_headers_valid_input () =
-  let input = "0 START tim apple" in
+  let input = "5 MSG 1\n12345" in
   let expected =
-    Ok
-      {
-        Protocol.Header.request_method = START ("tim", "apple");
-        Protocol.Header.size = 0;
-      }
+    Ok { Protocol.Header.request_method = MSG 1; Protocol.Header.size = 5 }
   in
   let actual = Protocol.Header.of_string input in
   Alcotest.check result_header_testable "Valid input" expected actual

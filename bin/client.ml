@@ -1,37 +1,29 @@
 let ( let* ) = Lwt.bind
 
-let echo_client host port =
+let get_addr host port =
   let* addr_info =
     Lwt_unix.getaddrinfo host (string_of_int port) [ Unix.(AI_FAMILY PF_INET) ]
   in
 
-  let* addr =
-    match addr_info with
-    | [] -> Lwt.fail_with "Failed to resolve host"
-    | addr :: _ -> Lwt.return addr.Unix.ai_addr
-  in
+  match addr_info with
+  | [] -> Lwt.fail_with "Failed to resolve host"
+  | addr :: _ -> Lwt.return addr.Unix.ai_addr
 
+let connect addr =
   let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-
   let* () = Lwt_unix.connect socket addr in
+  Lwt.return socket
 
-  let input = Lwt_io.of_fd ~mode:Lwt_io.input socket in
-  let output = Lwt_io.of_fd ~mode:Lwt_io.output socket in
+let start_client host port =
+  let* addr = get_addr host port in
+  let* socket = connect addr in
 
-  let rec send_messages () =
-    let* message = Lwt_io.read_line Lwt_io.stdin in
-    let* () = Lwt_io.write_line output message in
+  let ic = Lwt_io.of_fd ~mode:Lwt_io.input socket in
+  let oc = Lwt_io.of_fd ~mode:Lwt_io.output socket in
 
-    let* response = Lwt_io.read_line_opt input in
-    match response with
-    | None ->
-        let* () = Lwt_io.printl "Server disconnected. Exiting..." in
-        let* () = Lwt_io.close input in
-        let* () = Lwt_io.close output in
-        let* () = Lwt_unix.close socket in
-        Lwt.return_unit
-    | Some msg ->
-        let* () = Lwt_io.printf "Server Response: %s\n" msg in
-        send_messages ()
-  in
-  send_messages ()
+  let context = Chat.Handler.Context.init ic oc in
+
+  let* () = Chat.Handler.session_loop context in
+  Lwt.return_unit
+
+let () = Lwt_main.run (start_client "0.0.0.0" 8080)
