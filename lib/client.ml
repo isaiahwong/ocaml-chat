@@ -13,11 +13,13 @@ let get_addr host port =
   | [] -> Lwt.fail_with "Failed to resolve host"
   | addr :: _ -> Lwt.return addr.Unix.ai_addr
 
+(** Creates a socket connection to remote *)
 let connect addr =
   let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   let* () = Lwt_unix.connect socket addr in
   Lwt.return socket
 
+(** Establishes connection with remote chat server *)
 let connect_to_server host_port_str =
   let* host, port = parse_host_port host_port_str in
   let* addr = get_addr host port in
@@ -32,4 +34,5 @@ let connect_to_server host_port_str =
   let* () = Handler.chat_loop context in
   Lwt.return_unit
 
+(** Start the chat client application - blocking call *)
 let start_chat host_port_str = Lwt_main.run (connect_to_server host_port_str)

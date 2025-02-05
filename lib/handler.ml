@@ -13,11 +13,13 @@ end
 (** stores round trip time for each session *)
 let rtt = Round_trip.create 16
 
+(** Prints message to stdout and sends ACK to sender *)
 let handle_message (context : Context.t) id body =
   let* () = Lwt_io.printf "> %s\n" body in
   let* () = Protocol.write_empty_body context.writer (ACK id) in
   Lwt.return_ok ()
 
+(** Handles ack and prints acknowledgement to stdout with RTT time *)
 let handle_ack id =
   let ack_msg =
     match Round_trip.get_trace_delta_micro ~hashtbl:rtt ~id with
@@ -29,12 +31,14 @@ let handle_ack id =
 
 let handle_unavail () = Lwt.return_error Errors.UNAVAILABLE
 
+(** Multiplexs message based on the header's request_method *)
 let multiplex (context : Context.t) (message : Protocol.Message.t) =
   match message.header.request_method with
   | ACK id -> handle_ack id
   | MSG id -> handle_message context id message.body
   | UNAVAIL -> handle_unavail ()
 
+(** Constantly reads from tcp stream *)
 let read_loop (context : Context.t) =
   let rec loop () =
     let* res = Protocol.read context.reader in
@@ -48,6 +52,7 @@ let read_loop (context : Context.t) =
   in
   loop ()
 
+(** Listen's to stdin inputs and sends it over tcp stream *)
 let send_loop (context : Context.t) =
   (* Local monotonic increasing id *)
   let rec loop id =
@@ -64,6 +69,7 @@ let send_loop (context : Context.t) =
   in
   loop 0
 
+(** Error handler for common errors *)
 let handle_error err =
   match err with
   | Errors.EOF -> Lwt_io.printl "Remote Closed"

@@ -1,6 +1,6 @@
 open Infix
 
-(** flag to indicate if server is busy *)
+(** flag to indicate if server is busy. Server only accepts 1 conn *)
 let occupied = ref false
 
 (** Rejects a session and closes the [socket] *)
@@ -23,6 +23,7 @@ let start_session socket (context : Handler.Context.t) =
   occupied := false;
   Lwt.return ()
 
+(** connection loop that listens for new incoming connections*)
 let rec accept_conn server_socket =
   let* socket, _addr = Lwt_unix.accept server_socket in
 
@@ -36,10 +37,10 @@ let rec accept_conn server_socket =
     | true -> reject_session socket context
     | false -> start_session socket context
   in
-
   Lwt.async (fun () -> fn);
   accept_conn server_socket
 
+(** Starts the server - blocking call *)
 let serve port =
   let sockaddr = Unix.(ADDR_INET (inet_addr_any, port)) in
 
