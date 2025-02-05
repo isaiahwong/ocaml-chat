@@ -1,6 +1,5 @@
 open Chat
-
-let ( let* ) = Lwt.bind
+open Chat.Infix
 
 (** Equality function for headers *)
 let equal_header (h1 : Protocol.Header.t) (h2 : Protocol.Header.t) =
@@ -13,6 +12,7 @@ let equal_error (e1 : Errors.t) (e2 : Errors.t) = e1 = e2
 let errors_testable = Alcotest.testable Errors.pp equal_error
 let result_header_testable = Alcotest.(result header_testable errors_testable)
 
+(** Generates a random string of [length] *)
 let random_string length =
   let chars =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@##$$%^&*()><?\"{}"
@@ -47,11 +47,11 @@ let test_protocol_invalid_read input expected_err _ () =
   let read () =
     let r, w = Lwt_io.pipe () in
 
+    (* Sends message to input buffer*)
     let* () = Lwt_io.write w input in
     let* () = Lwt_io.close w in
 
     let* result = Chat.Protocol.read r in
-
     match result with
     | Ok _ -> Lwt.return @@ Errors.ERR "Should not work"
     | Error e -> Lwt.return e
@@ -60,7 +60,6 @@ let test_protocol_invalid_read input expected_err _ () =
   Alcotest.(check errors_testable) "should equal" expected_err actual;
   Lwt.return ()
 
-(* Test Cases *)
 let test_parse_headers_valid_input () =
   let input = "5 MSG 1\n12345" in
   let expected =
@@ -82,22 +81,26 @@ let () =
   Lwt_main.run
   @@ Alcotest_lwt.run "Protocol Test"
        [
-         ( "Protocol MSG - Valid reads",
-           [
-             test_case "Normal" `Quick (test_protocol_read "I love Ocaml");
-             test_case "Empty String" `Quick (test_protocol_read "");
-             test_case "Long string" `Quick (test_protocol_read (random_string 10000));
-           ] 
+          ( "Protocol MSG - Valid reads",
+            [
+              test_case "Normal" `Quick (test_protocol_read "I love Ocaml");
+              test_case "Empty String" `Quick (test_protocol_read "");
+              test_case "Long string" `Quick (test_protocol_read (random_string 10000));
+            ] 
           );
-          
-         ( "Protocol MSG - Invalid reads",
-           [
-              test_case "Invalid Request Method" `Quick (test_protocol_invalid_read "5 POST" (Errors.ERR "Invalid request method"));
-              test_case "Invalid Request Method" `Quick (test_protocol_invalid_read "POST" Errors.MALFORMED);
+
+          ( "Protocol MSG - Invalid reads",
+            [
+              test_case "Invalid method" `Quick (test_protocol_invalid_read "5 POST" (Errors.ERR "Invalid method"));
+              test_case "Missing size with invalid method" `Quick (test_protocol_invalid_read "POST" Errors.MALFORMED);
               test_case "Size and body length mismatch" `Quick (test_protocol_invalid_read "5 MSG 1\n" Errors.MALFORMED);
               test_case "Invalid body - mismatched size" `Quick (test_protocol_invalid_read "5 MSG 2\nHi" Errors.MALFORMED);
               test_case "Empty string" `Quick (test_protocol_invalid_read "" Errors.EOF);
-              test_case_sync "Valid input" `Quick test_parse_headers_valid_input;
-              test_case_sync "Empty input" `Quick test_parse_headers_empty_input;
-           ] );
+            ] );
+
+          ( "Protocol Headers",
+          [
+            test_case_sync "Valid input" `Quick test_parse_headers_valid_input;
+            test_case_sync "Empty input" `Quick test_parse_headers_empty_input;
+          ] );
        ]

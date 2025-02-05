@@ -9,7 +9,7 @@
 
 (authors "Isaiah Wong <iisaiah.dev@gmail.com>")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "Isaiah Wong <iisaiah.dev@gmail.com>")
 
 (license LICENSE)
 
@@ -17,10 +17,10 @@
 
 (package
  (name chat)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml lwt mtime alcotest alcotest-lwt)
+ (synopsis "1 on 1 Chat application")
+ (description "Chat application built with custom protocol")
+ (depends ocaml lwt mtime alcotest alcotest-lwt cmdliner)
  (tags
-  (chat tcp)))
+  (chat tcp sockets application_layer)))
 
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
+;

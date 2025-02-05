@@ -3,7 +3,7 @@ open Infix
 (** flag to indicate if server is busy *)
 let occupied = ref false
 
-(** Rejects a session and closes socket *)
+(** Rejects a session and closes the [socket] *)
 let reject_session socket (context : Handler.Context.t) =
   let* () = Protocol.write_empty_body context.writer UNAVAIL in
 
@@ -12,7 +12,7 @@ let reject_session socket (context : Handler.Context.t) =
   let* () = Lwt_unix.close socket in
   Lwt.return ()
 
-(** Starts a session. Handles closing of socket after event loop exists *)
+(** Starts a session. Handles closing of [socket] after event loop ends *)
 let start_session socket (context : Handler.Context.t) =
   occupied := true;
   let* () = Lwt_io.printl "New Connection " in

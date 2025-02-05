@@ -1,6 +1,16 @@
 open Infix
+(*
+  Protocol follows a text framing format that consists of a header separated by a 
+  line feed (lf) followed by the body. 
 
-let empty_body = ""
+  Example of a full message - 
+  13 MSG 1\nHello, OCaml!
+
+  Header format is as follows
+  | size              int32  | 
+  | method            string |
+  | id                int32  |
+*)
 
 (** Protocol Method Defines the messaging protocol methods used.
     - [`ACK id`] acknowledges a message with the given ID.
@@ -17,7 +27,7 @@ module Method = struct
     | [ "ACK"; id ] -> Ok (ACK (int_of_string id))
     | [ "MSG"; id ] -> Ok (MSG (int_of_string id))
     | [ "UNAVAIL" ] -> Ok UNAVAIL
-    | _ -> Error (Errors.ERR "Invalid request method")
+    | _ -> Error (Errors.ERR "Invalid method")
 
   let to_string = function
     | MSG id -> Printf.sprintf "MSG %d" id
@@ -83,6 +93,8 @@ module Message = struct
     Printf.sprintf "%s\n%s" (Header.to_string message.header) message.body
 end
 
+let empty_body = ""
+
 (** Reads first line in tcp stream to get header *)
 let read_header reader =
   let* line_opt = Lwt_io.read_line_opt reader in
@@ -121,21 +133,19 @@ let read reader : (Message.t, Errors.t) result Lwt.t =
   match header with
   | Error err -> Lwt.return_error err
   | Ok header -> (
-      let* body = read_body reader header.size in
-      match body with
+      let* res = read_body reader header.size in
+      match res with
       | Error err -> Lwt.return_error err
       | Ok body -> Lwt.return_ok @@ Message.init header body)
 
 (** writes a Protocol compliant message into TCP stream
-    @param body message body to be sent
-    @param request_method request method *)
+    @param body message body to be sent *)
 let write (writer : Lwt_io.output_channel) body request_method =
   let header = Header.init request_method (String.length body) in
   let message = Message.init header body in
   Lwt_io.write writer @@ Message.marshal message
 
-(** writes aProtocol compliant empty message into TCP stream
-    @param request_method request method *)
+(** writes a Protocol compliant empty message into TCP stream *)
 let write_empty_body (writer : Lwt_io.output_channel) request_method =
   let header = Header.init request_method (String.length empty_body) in
   let message = Message.init header empty_body in

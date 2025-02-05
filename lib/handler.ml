@@ -10,10 +10,8 @@ module Context = struct
   let init reader writer = { reader; writer }
 end
 
-(** RoundTrip HashTable tracer *)
-module RoundTrip = Trace.Make (struct
-  let tbl = Trace.IntHashTbl.create 16
-end)
+(** stores round trip time for each session *)
+let rtt = Round_trip.create 16
 
 let handle_message (context : Context.t) id body =
   let* () = Lwt_io.printf "> %s\n" body in
@@ -22,8 +20,8 @@ let handle_message (context : Context.t) id body =
 
 let handle_ack id =
   let ack_msg =
-    match RoundTrip.get_trace_delta id with
-    | Some delta -> Printf.sprintf "\n[Message ack - took %Ldμs]\n" delta
+    match Round_trip.get_trace_delta_micro ~hashtbl:rtt ~id with
+    | Some delta -> Printf.sprintf "[Message ack - took %Ldμs]\n" delta
     | None -> Printf.sprintf "ACK %d not found\n" id
   in
   let* () = Lwt_io.printl ack_msg in
@@ -60,7 +58,7 @@ let send_loop (context : Context.t) =
       Protocol.Message.init header body |> Protocol.Message.marshal
     in
     (* Start tracing round trip *)
-    let () = RoundTrip.trace id in
+    let () = Round_trip.trace ~hashtbl:rtt ~id in
     let* () = Lwt_io.write context.writer message in
     loop (id + 1)
   in
@@ -75,18 +73,19 @@ let handle_error err =
       let* () = Lwt_io.printlf "Error: %s\n" err in
       Lwt.return_unit
 
-(** Runs the chat event loop. It handles both reading and sending operations.
-    This is a blocking call that is managed by Lwt concurrently.
-
-    @param context Context that contains readers and writers
-    @raise Exception if an unexpected error occurs during execution. *)
+(** Chat loop runs with [Handler.context] which consists of readers and writers
+    to be written to TCP stream. This is a blocking call that is managed by Lwt
+    concurrently.
+    @param context Context that contains readers and writers *)
 let chat_loop (context : Context.t) =
-  let loop () =
+  let main () =
     let* r = Lwt.pick [ read_loop context; send_loop context ] in
     match r with
     | Ok _ -> Lwt_io.printl "Ending..."
     | Error e -> handle_error e
   in
-  Lwt.catch loop (fun exp ->
-      let* () = Lwt_io.printlf "Exception: %s" (Printexc.to_string exp) in
-      Lwt.return ())
+  let cleanup () =
+    let () = Round_trip.clear ~hashtbl:rtt in
+    Lwt.return_unit
+  in
+  Lwt.finalize main cleanup
