@@ -68,6 +68,7 @@ let handle_error err =
   match err with
   | Errors.EOF -> Lwt_io.printl "Remote Closed"
   | Errors.UNAVAILABLE -> Lwt_io.printl "Remote is unavailable"
+  | Errors.MALFORMED -> Lwt_io.printl "Malformed request"
   | Errors.ERR err ->
       let* () = Lwt_io.printlf "Error: %s\n" err in
       Lwt.return_unit

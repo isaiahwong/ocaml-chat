@@ -1,12 +1,12 @@
-let ( let* ) = Result.bind
-let ( let-? ) = Lwt.bind
+let ( let-- ) = Result.bind
+let ( let* ) = Lwt.bind
 let empty_body = ""
 
 module RequestMethod = struct
   type t =
-    | ACK of int
-    | MSG of int
-    | UNAVAIL
+    | ACK of int  (** Ack of a message with corresponding id *)
+    | MSG of int  (** Message with a corresponding id for ack *)
+    | UNAVAIL  (** Notifies sender that the receiver can't handle connection *)
 
   let of_string s =
     match String.split_on_char ' ' s with
@@ -45,12 +45,12 @@ module Header = struct
         Scanf.sscanf str "%d %[^\n]" (fun size request_method_str ->
             Ok (request_method_str, size))
       with
-      | Scanf.Scan_failure msg -> Error (Errors.ERR ("Scan failure: " ^ msg))
-      | Failure msg -> Error (Errors.ERR ("Scan failure: " ^ msg))
+      | Scanf.Scan_failure _ -> Error Errors.MALFORMED
+      | Failure _ -> Error Errors.MALFORMED
       | End_of_file -> Error EOF
     in
-    let* request_method_str, size = scan str in
-    let* request_method = RequestMethod.of_string request_method_str in
+    let-- request_method_str, size = scan str in
+    let-- request_method = RequestMethod.of_string request_method_str in
     Ok { request_method; size }
 
   let to_string hdr =
@@ -75,7 +75,7 @@ module Message = struct
 end
 
 let read_header input =
-  let-? line_opt = Lwt_io.read_line_opt input in
+  let* line_opt = Lwt_io.read_line_opt input in
   match line_opt with
   | None -> Lwt.return_error Errors.EOF
   | Some header_str -> (
@@ -84,21 +84,33 @@ let read_header input =
       | Ok header -> Lwt.return_ok header)
 
 let read_body reader (header : Header.t) =
-  match header.size with
-  | 0 -> Lwt.return_ok ""
-  | size -> (
-      let buffer = Bytes.create size in
-      let-? read = Lwt_io.read_into reader buffer 0 size in
-      match read with
-      | 0 -> Lwt.return_error @@ Errors.ERR "Malformed"
-      | _ -> Lwt.return_ok @@ Bytes.to_string buffer)
+  (* Recursively reads exactly [size] bytes into buffer *)
+  let rec read_exactly reader buffer offset remaining =
+    if remaining = 0 then
+      Lwt.return_ok ()
+    else
+      let* read = Lwt_io.read_into reader buffer offset remaining in
+      if read = 0 then
+        Lwt.return_error Errors.MALFORMED
+      else
+        read_exactly reader buffer (offset + read) (remaining - read)
+  in
+
+  if header.size = 0 then
+    Lwt.return_ok ""
+  else
+    let buffer = Bytes.create header.size in
+    let* result = read_exactly reader buffer 0 header.size in
+    match result with
+    | Error e -> Lwt.return_error e
+    | Ok () -> Lwt.return_ok (Bytes.to_string buffer)
 
 let read reader =
-  let-? header = read_header reader in
+  let* header = read_header reader in
   match header with
   | Error err -> Lwt.return_error err
   | Ok header -> (
-      let-? body = read_body reader header in
+      let* body = read_body reader header in
       match body with
       | Error err -> Lwt.return_error err
       | Ok body -> Lwt.return_ok @@ Message.init header body)
