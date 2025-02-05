@@ -9,7 +9,9 @@ let equal_header (h1 : Protocol.Header.t) (h2 : Protocol.Header.t) =
 (** Alcotest testable for header *)
 let header_testable = Alcotest.testable Protocol.Header.pp equal_header
 
-let result_header_testable = Alcotest.(result header_testable string)
+let equal_error (e1 : Errors.t) (e2 : Errors.t) = e1 = e2
+let errors_testable = Alcotest.testable Errors.pp equal_error
+let result_header_testable = Alcotest.(result header_testable errors_testable)
 
 let test_protocol_read_message _ () =
   let read () =
@@ -19,7 +21,7 @@ let test_protocol_read_message _ () =
     let* result = Chat.Protocol.read r in
     match result with
     | Ok _ -> Lwt.return "ok"
-    | Error e -> Lwt.return (Printf.sprintf "error: %s" e)
+    | Error e -> Lwt.return (Printf.sprintf "error: %s" (Errors.to_string e))
   in
   let* res = read () in
   Alcotest.(check string) "read_message should return 'ok'" "ok" res;
@@ -36,7 +38,7 @@ let test_parse_headers_valid_input () =
 
 let test_parse_headers_empty_input () =
   let input = "" in
-  let expected = Error "EOF" in
+  let expected = Error Errors.EOF in
   let actual = Protocol.Header.of_string input in
   Alcotest.check result_header_testable "Empty input" expected actual
 

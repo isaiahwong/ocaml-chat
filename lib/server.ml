@@ -1,24 +1,39 @@
 let ( let* ) = Lwt.bind
 let occupied = ref false
 
-let rec accept_conn server_socket =
-  let* incoming_socket, _addr = Lwt_unix.accept server_socket in
+let reject_session socket (context : Handler.Context.t) =
+  let* () = Protocol.write_header context.writer UNAVAIL in
 
-  let ic = Lwt_io.of_fd ~mode:Lwt_io.input incoming_socket in
-  let oc = Lwt_io.of_fd ~mode:Lwt_io.output incoming_socket in
+  (* Give client some time to process *)
+  let* () = Lwt_unix.sleep 1.0 in
+  let* () = Lwt_unix.close socket in
+  Lwt.return ()
 
+let start_session socket (context : Handler.Context.t) =
+  occupied := true;
   let* () = Lwt_io.printl "New Connection " in
 
-  let context = Handler.Context.init ic oc in
+  (* Runs blocking chat_loop *)
+  let* () = Handler.chat_loop context in
+  let* () = Lwt_unix.close socket in
+  occupied := false;
+  Lwt.return ()
 
-  let start_session =
-    let* () = Handler.session_loop context in
-    let* () = Lwt_unix.close incoming_socket in
-    occupied := false;
-    Lwt.return ()
+let rec accept_conn server_socket =
+  let* socket, _addr = Lwt_unix.accept server_socket in
+
+  let reader = Lwt_io.of_fd ~mode:Lwt_io.input socket in
+  let writer = Lwt_io.of_fd ~mode:Lwt_io.output socket in
+
+  let context = Handler.Context.init reader writer in
+
+  let fn =
+    match !occupied with
+    | true -> reject_session socket context
+    | false -> start_session socket context
   in
 
-  Lwt.async (fun () -> start_session);
+  Lwt.async (fun () -> fn);
   accept_conn server_socket
 
 let serve port =

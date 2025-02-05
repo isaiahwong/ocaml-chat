@@ -18,12 +18,12 @@ let start_client host port =
   let* addr = get_addr host port in
   let* socket = connect addr in
 
-  let ic = Lwt_io.of_fd ~mode:Lwt_io.input socket in
-  let oc = Lwt_io.of_fd ~mode:Lwt_io.output socket in
+  let reader = Lwt_io.of_fd ~mode:Lwt_io.input socket in
+  let writer = Lwt_io.of_fd ~mode:Lwt_io.output socket in
 
-  let context = Chat.Handler.Context.init ic oc in
+  let context = Chat.Handler.Context.init reader writer in
 
-  let* () = Chat.Handler.session_loop context in
+  let* () = Chat.Handler.chat_loop context in
   Lwt.return_unit
 
 let () = Lwt_main.run (start_client "0.0.0.0" 8080)
