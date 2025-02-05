@@ -7,11 +7,9 @@ This repo presents a 1 to 1 chat application implemented with a custom [protocol
 
 ### Install the dependencies
 ```bash
-$ opam switch create .
+$ opam switch create -y .
 
-$ opam install .
-
-$ eval $(opam env --set-switch)
+$ eval $(opam env --switch=$(pwd) --set-switch)
 ```
 
 ### Start the application
@@ -103,3 +101,9 @@ The project includes minor testing mainly on the marshaling and unmarshaling of 
 ```
 $ dune runtest
 ```
+
+# Libraries used
+- [Lwt](https://github.com/ocsigen/lwt) - Threading
+- [Mtime](https://github.com/dbuenzli/mtime) - Calculating round trip times with ns precision
+- [Alcotest](https://github.com/mirage/alcotest) - Testing suite
+- [Cmdliner](https://github.com/dbuenzli/cmdliner) - Building the command line app
