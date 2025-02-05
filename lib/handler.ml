@@ -1,5 +1,6 @@
-let ( let* ) = Lwt.bind
+open Infix
 
+(** Context that stores reader and writer for a given session *)
 module Context = struct
   type t = {
     reader : Lwt_io.input_channel;
@@ -9,17 +10,20 @@ module Context = struct
   let init reader writer = { reader; writer }
 end
 
+(** RoundTrip HashTable tracer *)
+module RoundTrip = Trace.Make (struct
+  let tbl = Trace.IntHashTbl.create 16
+end)
+
 let handle_message (context : Context.t) id body =
-  let* () =
-    Lwt_io.printf "[size %d] Message: %s \n" (String.length body) body
-  in
-  let* () = Protocol.write_header context.writer (ACK id) in
+  let* () = Lwt_io.printf "> %s\n" body in
+  let* () = Protocol.write_empty_body context.writer (ACK id) in
   Lwt.return_ok ()
 
 let handle_ack id =
   let ack_msg =
-    match Trace.RoundTrip.get_trace_delta id with
-    | Some delta -> Printf.sprintf "ACK %d received [%Ld μs]" id delta
+    match RoundTrip.get_trace_delta id with
+    | Some delta -> Printf.sprintf "\n[Message ack - took %Ldμs]\n" delta
     | None -> Printf.sprintf "ACK %d not found\n" id
   in
   let* () = Lwt_io.printl ack_msg in
@@ -55,11 +59,9 @@ let send_loop (context : Context.t) =
     let message =
       Protocol.Message.init header body |> Protocol.Message.marshal
     in
-
     (* Start tracing round trip *)
-    let () = Trace.RoundTrip.trace id in
+    let () = RoundTrip.trace id in
     let* () = Lwt_io.write context.writer message in
-
     loop (id + 1)
   in
   loop 0
@@ -73,6 +75,11 @@ let handle_error err =
       let* () = Lwt_io.printlf "Error: %s\n" err in
       Lwt.return_unit
 
+(** Runs the chat event loop. It handles both reading and sending operations.
+    This is a blocking call that is managed by Lwt concurrently.
+
+    @param context Context that contains readers and writers
+    @raise Exception if an unexpected error occurs during execution. *)
 let chat_loop (context : Context.t) =
   let loop () =
     let* r = Lwt.pick [ read_loop context; send_loop context ] in

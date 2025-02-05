@@ -1,14 +1,18 @@
-let ( let* ) = Lwt.bind
+open Infix
+
+(** flag to indicate if server is busy *)
 let occupied = ref false
 
+(** Rejects a session and closes socket *)
 let reject_session socket (context : Handler.Context.t) =
-  let* () = Protocol.write_header context.writer UNAVAIL in
+  let* () = Protocol.write_empty_body context.writer UNAVAIL in
 
   (* Give client some time to process *)
   let* () = Lwt_unix.sleep 1.0 in
   let* () = Lwt_unix.close socket in
   Lwt.return ()
 
+(** Starts a session. Handles closing of socket after event loop exists *)
 let start_session socket (context : Handler.Context.t) =
   occupied := true;
   let* () = Lwt_io.printl "New Connection " in
@@ -47,3 +51,5 @@ let serve port =
 
   let* () = Lwt_io.printlf "Server Started on port %d" port in
   accept_conn server_socket
+
+let serve_chat port = Lwt_main.run (serve port)
