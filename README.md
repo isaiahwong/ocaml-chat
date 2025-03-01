@@ -1,5 +1,5 @@
 # Chat
-This repo presents a 1 to 1 chat application implemented with a custom [protocol](#protocol) on top of TCP has been implemeneted. 
+This repo presents a 1 to 1 chat application implemented with a custom [protocol](#protocol) on top of TCP. 
 
 <img src="doc/output.gif" />
 

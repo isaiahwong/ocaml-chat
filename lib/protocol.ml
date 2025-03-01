@@ -88,6 +88,9 @@ module Message = struct
 
   let init header body = { header; body }
 
+  let marshal_header (header : Header.t) =
+    Printf.sprintf "%s\n" @@ Header.to_string header
+
   (** Marshals [t] into protocol string compliant format *)
   let marshal (message : t) =
     Printf.sprintf "%s\n%s" (Header.to_string message.header) message.body
@@ -138,12 +141,59 @@ let read reader : (Message.t, Errors.t) result Lwt.t =
       | Error err -> Lwt.return_error err
       | Ok body -> Lwt.return_ok @@ Message.init header body)
 
+let write_in_chunks
+    (writer : Lwt_io.output_channel)
+    (message : Message.t)
+    (chunk : int) : unit Lwt.t =
+  let* () = Lwt_io.write writer @@ Message.marshal_header message.header in
+  let rec write offset =
+    if offset >= message.header.size then
+      Lwt.return_unit
+    else
+      let remaining = message.header.size - offset in
+      let size =
+        if remaining > chunk then
+          chunk
+        else
+          remaining
+      in
+      let* size = Lwt_io.write_from_string writer message.body offset size in
+      let* () = Lwt_io.printf "written %d \n" size in
+      write (offset + size)
+  in
+  write 0
+
 (** writes a Protocol compliant message into TCP stream
     @param body message body to be sent *)
-let write (writer : Lwt_io.output_channel) body request_method =
-  let header = Header.init request_method (String.length body) in
+let write ?(chunk = 4096) (writer : Lwt_io.output_channel) body request_method =
+  let body_len = String.length body in
+  let header = Header.init request_method body_len in
   let message = Message.init header body in
-  Lwt_io.write writer @@ Message.marshal message
+  let* () = Lwt_io.printf "body %d\n" body_len in
+  if body_len <= chunk then
+    Lwt_io.write writer @@ Message.marshal message
+  else
+    let* () = write_in_chunks writer message chunk in
+    Lwt_io.printl "done writing"
+
+let write_from (writer : Lwt_io.output_channel) filepath id chunk =
+  let* fc = Lwt_io.open_file ~mode:Lwt_io.Input filepath in
+  (* write header *)
+  let* stats = Lwt_unix.stat filepath in
+  let file_size = stats.Lwt_unix.st_size in
+  let header = Header.init (Method.MSG id) file_size in
+  let* () = Lwt_io.write writer @@ Message.marshal_header header in
+
+  let rec read () =
+    let* s = Lwt_io.read ~count:chunk fc in
+    match s with
+    | "" -> Lwt.return_unit
+    | s ->
+        let* () = Lwt_io.write writer s in
+        read ()
+  in
+  let* () = read () in
+  Lwt_io.close fc
 
 (** writes a Protocol compliant empty message into TCP stream *)
 let write_empty_body (writer : Lwt_io.output_channel) request_method =

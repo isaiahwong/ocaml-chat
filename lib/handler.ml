@@ -58,13 +58,9 @@ let send_loop (context : Context.t) =
   let rec loop id =
     (* Reads from user's stdin *)
     let* body = Lwt_io.read_line Lwt_io.stdin in
-    let header = Protocol.Header.init_msg_header id body in
-    let message =
-      Protocol.Message.init header body |> Protocol.Message.marshal
-    in
     (* Start tracing round trip *)
     let () = Round_trip.trace ~hashtbl:rtt ~id in
-    let* () = Lwt_io.write context.writer message in
+    let* () = Protocol.write context.writer body (MSG id) in
     loop (id + 1)
   in
   loop 0

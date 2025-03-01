@@ -19,8 +19,13 @@ let connect addr =
   let* () = Lwt_unix.connect socket addr in
   Lwt.return socket
 
+let loop context = Handler.chat_loop context
+
+let send_file (context : Handler.Context.t) filepath =
+  Protocol.write_from context.writer filepath 1 4096
+
 (** Establishes connection with remote chat server *)
-let connect_to_server host_port_str =
+let connect_to_server ~f host_port_str =
   let* host, port = parse_host_port host_port_str in
   let* addr = get_addr host port in
   let* socket = connect addr in
@@ -31,8 +36,14 @@ let connect_to_server host_port_str =
 
   let context = Handler.Context.init reader writer in
 
-  let* () = Handler.chat_loop context in
+  let* () = f context in
+
   Lwt.return_unit
 
 (** Start the chat client application - blocking call *)
-let start_chat host_port_str = Lwt_main.run (connect_to_server host_port_str)
+let start_chat host_port_str =
+  Lwt_main.run (connect_to_server ~f:loop host_port_str)
+
+let start_send_file host_port_str filepath =
+  Lwt_main.run
+    (connect_to_server ~f:(fun ctx -> send_file ctx filepath) host_port_str)

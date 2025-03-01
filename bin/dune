@@ -1,4 +1,5 @@
 (executable
  (public_name chat)
  (name main)
+ (modes byte exe)
  (libraries chat cmdliner))
